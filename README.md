@@ -71,3 +71,4 @@ middleware.ts           Protección de rutas (redirige a /login si no hay sesió
 - Envío de avisos de cuotas pendientes por email.
 - Roles y permisos diferenciados (la columna `usuarios.rol` ya está preparada para esto).
 - Historial detallado de modificaciones sobre socios (hoy la tabla `auditoria` ya registra altas, bajas y anulaciones de pago).
+# siempre-unidos
