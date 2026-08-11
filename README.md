@@ -32,14 +32,7 @@ npm run dev
 
 Abrí http://localhost:3000 en el navegador. Vas a caer en el login; entrá con el usuario que creaste en el paso 2.
 
-## 5. Despliegue (por ejemplo, Vercel)
-
-1. Subí este proyecto a un repositorio (GitHub, GitLab, etc.).
-2. En Vercel, importá el repositorio.
-3. Cargá las mismas dos variables de entorno del paso 3 en la configuración del proyecto en Vercel.
-4. Desplegá. Vercel te da una URL pública lista para usar.
-
-## 6. Estructura del proyecto
+## 5. Estructura del proyecto
 
 ```
 app/
@@ -59,16 +52,16 @@ lib/                    Clientes de Supabase, tipos y utilidades
 middleware.ts           Protección de rutas (redirige a /login si no hay sesión)
 ```
 
-## 7. Notas de diseño
+## 6. Notas de diseño
 
 - El estado de cada cuota (PAGADO / PENDIENTE / ATRASADO) se calcula en la vista `vista_estado_cuenta` de la base de datos, no se guarda en ninguna tabla.
 - Los pagos nunca se eliminan: se anulan (`estado = 'ANULADO'`) y quedan en el historial. Ver `02-schema.sql` para el detalle de las reglas de integridad.
 - El valor de un período de cuota queda bloqueado en cuanto tiene al menos un pago asociado (trigger en base de datos).
 
-## 8. Próximos pasos sugeridos
+## 7. Próximos pasos sugeridos
 
 - Impresión / generación de comprobantes en PDF.
 - Envío de avisos de cuotas pendientes por email.
 - Roles y permisos diferenciados (la columna `usuarios.rol` ya está preparada para esto).
 - Historial detallado de modificaciones sobre socios (hoy la tabla `auditoria` ya registra altas, bajas y anulaciones de pago).
-# siempre-unidos
+
