@@ -25,6 +25,14 @@ export function trimestreLabel(trimestre: number) {
   return `T${trimestre}`;
 }
 
+export const OPCIONES_ESTADO_CIVIL = [
+  { value: "SOLTERO", label: "Soltero/a" },
+  { value: "CASADO", label: "Casado/a" },
+  { value: "DIVORCIADO", label: "Divorciado/a" },
+  { value: "VIUDO", label: "Viudo/a" },
+  { value: "OTRO", label: "Otro" },
+] as const;
+
 // Convierte un array de objetos planos a CSV y dispara la descarga en el navegador.
 export function exportarCSV(nombreArchivo: string, filas: Record<string, string | number>[]) {
   if (filas.length === 0) return;

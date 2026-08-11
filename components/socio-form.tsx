@@ -3,6 +3,7 @@
 import { useFormState, useFormStatus } from "react-dom";
 import type { Socio } from "@/lib/types";
 import type { SocioFormState } from "@/app/(app)/socios/actions";
+import { OPCIONES_ESTADO_CIVIL } from "@/lib/utils";
 
 function BotonGuardar({ label }: { label: string }) {
   const { pending } = useFormStatus();
@@ -69,6 +70,30 @@ export function SocioForm({
             className="input"
             defaultValue={socio?.fecha_alta ?? new Date().toISOString().slice(0, 10)}
           />
+        </div>
+        <div className="field">
+          <label className="label" htmlFor="nacionalidad">Nacionalidad</label>
+          <input
+            id="nacionalidad"
+            name="nacionalidad"
+            className="input"
+            placeholder="Ej: Argentina"
+            defaultValue={socio?.nacionalidad ?? ""}
+          />
+        </div>
+        <div className="field">
+          <label className="label" htmlFor="estado_civil">Estado civil</label>
+          <select
+            id="estado_civil"
+            name="estado_civil"
+            className="input"
+            defaultValue={socio?.estado_civil ?? ""}
+          >
+            <option value="">Sin especificar</option>
+            {OPCIONES_ESTADO_CIVIL.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
         </div>
         <div className="field">
           <label className="label" htmlFor="telefono">Teléfono</label>

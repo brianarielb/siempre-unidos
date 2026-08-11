@@ -3,6 +3,7 @@
 // salida de: npx supabase gen types typescript --project-id <id>
 
 export type EstadoSocio = "ACTIVO" | "INACTIVO";
+export type EstadoCivil = "SOLTERO" | "CASADO" | "DIVORCIADO" | "VIUDO" | "OTRO";
 export type EstadoPago = "ACTIVO" | "ANULADO";
 export type EstadoCuota = "PAGADO" | "PENDIENTE" | "ATRASADO";
 
@@ -13,6 +14,8 @@ export interface Socio {
   apellido: string;
   dni: string;
   fecha_nacimiento: string | null;
+  nacionalidad: string | null;
+  estado_civil: EstadoCivil | null;
   telefono: string | null;
   email: string | null;
   direccion: string | null;

@@ -11,6 +11,7 @@ create extension if not exists "pgcrypto"; -- para gen_random_uuid()
 -- ---------- TIPOS ----------
 create type estado_socio as enum ('ACTIVO', 'INACTIVO');
 create type estado_pago  as enum ('ACTIVO', 'ANULADO');
+create type estado_civil_socio as enum ('SOLTERO', 'CASADO', 'DIVORCIADO', 'VIUDO', 'OTRO');
 
 -- =====================================================================
 -- USUARIOS (perfil interno, 1:1 con auth.users)
@@ -59,6 +60,8 @@ create table public.socios (
   apellido text not null,
   dni text not null unique,
   fecha_nacimiento date,
+  nacionalidad text,
+  estado_civil estado_civil_socio,
   telefono text,
   email text,
   direccion text,

@@ -13,6 +13,8 @@ function datosDelForm(formData: FormData) {
     apellido: String(formData.get("apellido") ?? "").trim(),
     dni: String(formData.get("dni") ?? "").trim(),
     fecha_nacimiento: (formData.get("fecha_nacimiento") as string) || null,
+    nacionalidad: (formData.get("nacionalidad") as string) || null,
+    estado_civil: (formData.get("estado_civil") as string) || null,
     telefono: (formData.get("telefono") as string) || null,
     email: (formData.get("email") as string) || null,
     direccion: (formData.get("direccion") as string) || null,
