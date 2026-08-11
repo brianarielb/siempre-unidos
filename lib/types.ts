@@ -77,7 +77,3 @@ export interface EstadoCuentaRow {
   importe: number | null;
   estado_cuota: EstadoCuota;
 }
-
-// Placeholder mínimo para que @supabase/ssr tipe los clientes.
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
-export interface Database {}
