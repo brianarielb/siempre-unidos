@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { Sidebar } from "@/components/sidebar";
+import { AppShell } from "@/components/app-shell";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = createClient();
@@ -22,10 +22,5 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   const nombreUsuario = perfil?.nombre || perfil?.email || user.email || "Usuario";
 
-  return (
-    <div className="flex min-h-screen bg-bg">
-      <Sidebar nombreUsuario={nombreUsuario} />
-      <main className="flex-1 overflow-y-auto p-6 lg:p-8">{children}</main>
-    </div>
-  );
+  return <AppShell nombreUsuario={nombreUsuario}>{children}</AppShell>;
 }

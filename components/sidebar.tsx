@@ -15,11 +15,25 @@ const ITEMS = [
   { href: "/configuracion", label: "Configuración" },
 ];
 
-export function Sidebar({ nombreUsuario }: { nombreUsuario: string }) {
+export function Sidebar({
+  nombreUsuario,
+  abierto,
+  onNavegar,
+}: {
+  nombreUsuario: string;
+  abierto: boolean;
+  onNavegar: () => void;
+}) {
   const pathname = usePathname();
 
   return (
-    <aside className="flex h-screen w-60 shrink-0 flex-col border-r border-border bg-surface">
+    <aside
+      className={cn(
+        "fixed inset-y-0 left-0 z-40 flex h-screen w-60 shrink-0 flex-col border-r border-border bg-surface transition-transform duration-200 ease-in-out",
+        "lg:static lg:translate-x-0",
+        abierto ? "translate-x-0" : "-translate-x-full"
+      )}
+    >
       <div className="flex items-center gap-2 border-b border-border px-4 py-4">
         <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand text-sm font-semibold text-white">
           CJ
@@ -29,13 +43,14 @@ export function Sidebar({ nombreUsuario }: { nombreUsuario: string }) {
         </div>
       </div>
 
-      <nav className="flex-1 space-y-1 p-3">
+      <nav className="flex-1 space-y-1 overflow-y-auto p-3">
         {ITEMS.map((item) => {
           const activo = pathname === item.href || pathname.startsWith(item.href + "/");
           return (
             <Link
               key={item.href}
               href={item.href}
+              onClick={onNavegar}
               className={cn(
                 "block rounded-md px-3 py-2 text-sm font-medium transition-colors",
                 activo
@@ -56,3 +71,4 @@ export function Sidebar({ nombreUsuario }: { nombreUsuario: string }) {
     </aside>
   );
 }
+
