@@ -48,15 +48,15 @@ export default async function SociosPage({
 
       {error && <p className="text-sm text-estado-atrasado">No se pudo cargar el listado de socios.</p>}
 
-      <div className="card overflow-hidden">
+      <div className="card overflow-x-auto">
         <table className="w-full text-left text-sm">
           <thead className="border-b border-border bg-bg text-xs uppercase tracking-wide text-ink-600">
             <tr>
               <th className="px-4 py-3">N° socio</th>
               <th className="px-4 py-3">Apellido y nombre</th>
               <th className="px-4 py-3">DNI</th>
-              <th className="px-4 py-3">Teléfono</th>
-              <th className="px-4 py-3">Estado</th>
+              <th className="hidden px-4 py-3 sm:table-cell">Teléfono</th>
+              <th className="hidden px-4 py-3 sm:table-cell">Estado</th>
               <th className="px-4 py-3"></th>
             </tr>
           </thead>
@@ -66,10 +66,10 @@ export default async function SociosPage({
                 <td className="px-4 py-3 font-medium text-ink-900">{s.numero_socio}</td>
                 <td className="px-4 py-3">{s.apellido}, {s.nombre}</td>
                 <td className="px-4 py-3 text-ink-600">{s.dni}</td>
-                <td className="px-4 py-3 text-ink-600">{s.telefono ?? "-"}</td>
-                <td className="px-4 py-3"><EstadoBadge estado={s.estado} /></td>
+                <td className="hidden px-4 py-3 text-ink-600 sm:table-cell">{s.telefono ?? "-"}</td>
+                <td className="hidden px-4 py-3 sm:table-cell"><EstadoBadge estado={s.estado} /></td>
                 <td className="px-4 py-3 text-right">
-                  <Link href={`/socios/${s.id}`} className="text-sm font-medium text-brand hover:underline">
+                  <Link href={`/socios/${s.id}`} className="whitespace-nowrap text-sm font-medium text-brand hover:underline">
                     Ver ficha
                   </Link>
                 </td>
