@@ -18,15 +18,18 @@ export function SocioForm({
   socio,
   action,
   labelBoton = "Guardar",
+  soloLectura = false,
 }: {
   socio?: Socio;
   action: (state: SocioFormState, formData: FormData) => Promise<SocioFormState>;
   labelBoton?: string;
+  soloLectura?: boolean;
 }) {
   const [state, formAction] = useFormState(action, { error: null });
 
   return (
     <form action={formAction} className="flex flex-col gap-5">
+      <fieldset disabled={soloLectura} className="contents">
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div className="field">
           <label className="label" htmlFor="numero_socio">Número de socio *</label>
@@ -118,12 +121,15 @@ export function SocioForm({
           />
         </div>
       </div>
+      </fieldset>
 
       {state.error && <p className="text-sm text-estado-atrasado">{state.error}</p>}
 
-      <div className="flex justify-end gap-3">
-        <BotonGuardar label={labelBoton} />
-      </div>
+      {!soloLectura && (
+        <div className="flex justify-end gap-3">
+          <BotonGuardar label={labelBoton} />
+        </div>
+      )}
     </form>
   );
 }

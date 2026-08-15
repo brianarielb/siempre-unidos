@@ -25,3 +25,34 @@ export async function alternarMedioPago(id: number, activo: boolean) {
   if (error) throw new Error("No se pudo actualizar el medio de pago.");
   revalidatePath("/configuracion");
 }
+
+export async function cambiarRolUsuario(usuarioId: string, rol: string) {
+  const supabase = createClient();
+  const { error } = await supabase.from("usuarios").update({ rol }).eq("id", usuarioId);
+  if (error) {
+    // El trigger proteger_cambio_rol también rechaza esto en la base si el
+    // que ejecuta la acción no es ADMIN; este mensaje cubre ese caso.
+    throw new Error("No se pudo cambiar el rol. Solo un administrador puede hacerlo.");
+  }
+  revalidatePath("/configuracion");
+}
+
+export async function actualizarTamanioPagina(_prev: { error: string | null }, formData: FormData) {
+  const valor = Number(formData.get("tamanio_pagina"));
+  if (!Number.isFinite(valor) || valor < 5 || valor > 500) {
+    return { error: "Ingresá un número entre 5 y 500." };
+  }
+
+  const supabase = createClient();
+  const { error } = await supabase
+    .from("configuracion_sistema")
+    .update({ valor: String(valor) })
+    .eq("clave", "tamanio_pagina");
+
+  if (error) return { error: "No se pudo guardar (solo un administrador puede cambiarlo)." };
+
+  revalidatePath("/configuracion");
+  revalidatePath("/socios");
+  revalidatePath("/pagos");
+  return { error: null };
+}

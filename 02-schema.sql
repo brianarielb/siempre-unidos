@@ -10,7 +10,7 @@ create extension if not exists "pgcrypto"; -- para gen_random_uuid()
 
 -- ---------- TIPOS ----------
 create type estado_socio as enum ('ACTIVO', 'INACTIVO');
-create type estado_pago  as enum ('ACTIVO', 'ANULADO');
+create type estado_pago  as enum ('ACTIVO', 'ANULADO', 'PENDIENTE_APROBACION');
 create type estado_civil_socio as enum ('SOLTERO', 'CASADO', 'DIVORCIADO', 'VIUDO', 'OTRO');
 
 -- =====================================================================
@@ -20,17 +20,24 @@ create table public.usuarios (
   id uuid primary key references auth.users(id) on delete cascade,
   nombre text not null,
   email text not null,
-  rol text not null default 'ADMIN',        -- preparado para roles futuros
+  rol text not null default 'ADMIN' check (rol in ('ADMIN', 'OPERADOR', 'LECTURA')),
   activo boolean not null default true,
   created_at timestamptz not null default now()
 );
 
--- Crea automáticamente el perfil cuando se registra un usuario en Supabase Auth
+comment on column public.usuarios.rol is
+  'ADMIN: acceso total. OPERADOR: gestiona socios y registra pagos, no puede '
+  'editar cuotas ni anular pagos. LECTURA: solo consulta y reportes.';
+
+-- Crea automáticamente el perfil cuando se registra un usuario en Supabase Auth.
+-- El primer usuario que crees a mano en Supabase queda como ADMIN (default de
+-- la columna); los que se creen después de eso entran como OPERADOR y un
+-- ADMIN los asciende desde Configuración si corresponde.
 create or replace function public.handle_new_user()
 returns trigger as $$
 begin
-  insert into public.usuarios (id, nombre, email)
-  values (new.id, coalesce(new.raw_user_meta_data->>'nombre', new.email), new.email);
+  insert into public.usuarios (id, nombre, email, rol)
+  values (new.id, coalesce(new.raw_user_meta_data->>'nombre', new.email), new.email, 'OPERADOR');
   return new;
 end;
 $$ language plpgsql security definer;
@@ -38,6 +45,33 @@ $$ language plpgsql security definer;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
+
+-- Función helper: rol del usuario logueado. security definer + stable evita
+-- recursión de RLS al usarla dentro de las propias políticas de "usuarios".
+create or replace function public.rol_actual()
+returns text
+language sql
+security definer
+stable
+as $$
+  select rol from public.usuarios where id = auth.uid();
+$$;
+
+-- Nadie puede auto-ascenderse de rol: solo un ADMIN puede cambiar el rol
+-- de cualquier usuario, incluido el propio.
+create or replace function public.proteger_cambio_rol()
+returns trigger as $$
+begin
+  if new.rol is distinct from old.rol and public.rol_actual() <> 'ADMIN' then
+    raise exception 'Solo un administrador puede cambiar el rol de un usuario';
+  end if;
+  return new;
+end;
+$$ language plpgsql;
+
+create trigger trg_proteger_cambio_rol
+before update on public.usuarios
+for each row execute function public.proteger_cambio_rol();
 
 -- =====================================================================
 -- MEDIOS DE PAGO (catálogo, extensible sin migraciones de tipo)
@@ -130,15 +164,23 @@ create table public.pagos (
   estado estado_pago not null default 'ACTIVO',
   pago_original_id uuid references public.pagos(id),
   motivo_anulacion text,
+  aprobado_por uuid references public.usuarios(id),
+  aprobado_en timestamptz,
+  grupo_pago_id uuid,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
--- Un socio no puede tener más de un pago ACTIVO por período (también evita
--- condiciones de carrera si dos operadores cargan el mismo pago a la vez)
+comment on column public.pagos.grupo_pago_id is
+  'Agrupa varios pagos (uno por período) registrados en una misma operación '
+  'cuando el socio paga varios trimestres juntos. Null en pagos individuales.';
+
+-- Un socio no puede tener más de un pago ACTIVO o PENDIENTE_APROBACION por
+-- período (también evita condiciones de carrera si dos operadores cargan el
+-- mismo pago a la vez)
 create unique index uq_pago_activo_por_periodo
   on public.pagos(socio_id, cuota_periodo_id)
-  where estado = 'ACTIVO';
+  where estado in ('ACTIVO', 'PENDIENTE_APROBACION');
 
 create index idx_pagos_socio on public.pagos(socio_id);
 create index idx_pagos_periodo on public.pagos(cuota_periodo_id);
@@ -164,6 +206,29 @@ create trigger trg_pagos_updated_at
 before update on public.pagos
 for each row execute function public.set_updated_at();
 
+-- El estado del pago lo decide la base según el rol de quien lo registra,
+-- no el cliente: ADMIN queda aprobado automáticamente; cualquier otro rol
+-- autorizado a registrar pagos (OPERADOR) queda pendiente de aprobación.
+create or replace function public.fijar_estado_pago_segun_rol()
+returns trigger as $$
+begin
+  if public.rol_actual() = 'ADMIN' then
+    new.estado := 'ACTIVO';
+    new.aprobado_por := auth.uid();
+    new.aprobado_en := now();
+  else
+    new.estado := 'PENDIENTE_APROBACION';
+    new.aprobado_por := null;
+    new.aprobado_en := null;
+  end if;
+  return new;
+end;
+$$ language plpgsql;
+
+create trigger trg_fijar_estado_pago
+before insert on public.pagos
+for each row execute function public.fijar_estado_pago_segun_rol();
+
 -- =====================================================================
 -- AUDITORIA
 -- =====================================================================
@@ -179,14 +244,17 @@ create table public.auditoria (
 
 create index idx_auditoria_tabla_registro on public.auditoria(tabla, registro_id);
 
--- Auditoría automática de pagos (alta y anulación)
+-- Auditoría automática de pagos (alta, aprobación y anulación)
 create or replace function public.audit_pagos()
 returns trigger as $$
 begin
   if tg_op = 'INSERT' then
     insert into public.auditoria (usuario_id, tabla, registro_id, accion, detalle)
     values (new.usuario_id, 'pagos', new.id::text, 'ALTA_PAGO', to_jsonb(new));
-  elsif tg_op = 'UPDATE' and old.estado = 'ACTIVO' and new.estado = 'ANULADO' then
+  elsif tg_op = 'UPDATE' and old.estado = 'PENDIENTE_APROBACION' and new.estado = 'ACTIVO' then
+    insert into public.auditoria (usuario_id, tabla, registro_id, accion, detalle)
+    values (new.aprobado_por, 'pagos', new.id::text, 'APROBACION_PAGO', '{}'::jsonb);
+  elsif tg_op = 'UPDATE' and old.estado <> 'ANULADO' and new.estado = 'ANULADO' then
     insert into public.auditoria (usuario_id, tabla, registro_id, accion, detalle)
     values (new.usuario_id, 'pagos', new.id::text, 'ANULACION_PAGO',
       jsonb_build_object('motivo', new.motivo_anulacion));
@@ -261,30 +329,94 @@ alter table public.medios_pago enable row level security;
 alter table public.pagos enable row level security;
 alter table public.auditoria enable row level security;
 
--- usuarios: cada quien ve y edita su propio perfil
+-- usuarios: cada quien ve/edita su propia fila; un ADMIN ve y edita todas
+-- (el trigger trg_proteger_cambio_rol impide que alguien se auto-ascienda)
 create policy usuarios_select_own on public.usuarios
   for select using (auth.uid() = id);
+
+create policy usuarios_select_admin on public.usuarios
+  for select using (public.rol_actual() = 'ADMIN');
 
 create policy usuarios_update_own on public.usuarios
   for update using (auth.uid() = id);
 
--- Resto de tablas operativas: cualquier usuario autenticado puede
--- leer/escribir (hoy hay un solo rol; el día que haya roles distintos,
--- estas políticas se refinan usando usuarios.rol sin tocar el resto del modelo)
-create policy socios_all on public.socios
-  for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+create policy usuarios_update_admin on public.usuarios
+  for update using (public.rol_actual() = 'ADMIN');
 
-create policy periodos_all on public.cuotas_periodos
-  for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+-- socios: todos consultan; ADMIN y OPERADOR crean/editan
+create policy socios_select on public.socios
+  for select using (auth.role() = 'authenticated');
 
+create policy socios_insert on public.socios
+  for insert with check (public.rol_actual() in ('ADMIN', 'OPERADOR'));
+
+create policy socios_update on public.socios
+  for update using (public.rol_actual() in ('ADMIN', 'OPERADOR'));
+
+-- cuotas_periodos: todos consultan; solo ADMIN crea/edita valores
+create policy periodos_select on public.cuotas_periodos
+  for select using (auth.role() = 'authenticated');
+
+create policy periodos_insert on public.cuotas_periodos
+  for insert with check (public.rol_actual() = 'ADMIN');
+
+create policy periodos_update on public.cuotas_periodos
+  for update using (public.rol_actual() = 'ADMIN');
+
+-- medios_pago: todos consultan; solo ADMIN agrega/desactiva
 create policy medios_pago_select on public.medios_pago
   for select using (auth.role() = 'authenticated');
 
-create policy pagos_all on public.pagos
-  for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+create policy medios_pago_insert on public.medios_pago
+  for insert with check (public.rol_actual() = 'ADMIN');
 
-create policy auditoria_select on public.auditoria
+create policy medios_pago_update on public.medios_pago
+  for update using (public.rol_actual() = 'ADMIN');
+
+-- pagos: todos consultan; ADMIN y OPERADOR registran; solo ADMIN anula
+create policy pagos_select on public.pagos
   for select using (auth.role() = 'authenticated');
+
+create policy pagos_insert on public.pagos
+  for insert with check (public.rol_actual() in ('ADMIN', 'OPERADOR'));
+
+create policy pagos_update on public.pagos
+  for update using (public.rol_actual() = 'ADMIN');
+
+-- auditoria: solo ADMIN puede consultarla; se sigue insertando vía triggers
+create policy auditoria_select on public.auditoria
+  for select using (public.rol_actual() = 'ADMIN');
 
 create policy auditoria_insert on public.auditoria
   for insert with check (auth.role() = 'authenticated');
+
+-- =====================================================================
+-- CONFIGURACION_SISTEMA (clave/valor genérico, ej: tamaño de página)
+-- =====================================================================
+create table public.configuracion_sistema (
+  clave text primary key,
+  valor text not null,
+  actualizado_en timestamptz not null default now()
+);
+
+insert into public.configuracion_sistema (clave, valor) values ('tamanio_pagina', '20');
+
+alter table public.configuracion_sistema enable row level security;
+
+create policy configuracion_select on public.configuracion_sistema
+  for select using (auth.role() = 'authenticated');
+
+create policy configuracion_update on public.configuracion_sistema
+  for update using (public.rol_actual() = 'ADMIN');
+
+create or replace function public.set_actualizado_en()
+returns trigger as $$
+begin
+  new.actualizado_en = now();
+  return new;
+end;
+$$ language plpgsql;
+
+create trigger trg_configuracion_actualizado_en
+before update on public.configuracion_sistema
+for each row execute function public.set_actualizado_en();

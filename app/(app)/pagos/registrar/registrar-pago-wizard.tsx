@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useFormState, useFormStatus } from "react-dom";
 import { EstadoBadge } from "@/components/estado-badge";
 import { formatearImporte, trimestreLabel } from "@/lib/utils";
@@ -29,11 +29,15 @@ type PeriodoPendiente = {
   estado_cuota: string;
 };
 
-function BotonConfirmar() {
+function BotonConfirmar({ cantidad }: { cantidad: number }) {
   const { pending } = useFormStatus();
   return (
-    <button type="submit" className="btn-primary" disabled={pending}>
-      {pending ? "Registrando..." : "Confirmar pago"}
+    <button type="submit" className="btn-primary" disabled={pending || cantidad === 0}>
+      {pending
+        ? "Registrando..."
+        : cantidad > 1
+          ? `Confirmar pago de ${cantidad} períodos`
+          : "Confirmar pago"}
     </button>
   );
 }
@@ -46,18 +50,16 @@ export function RegistrarPagoWizard({ mediosPago }: { mediosPago: MedioPago[] })
   const [buscando, startBusqueda] = useTransition();
 
   const [socio, setSocio] = useState<SocioResultado | null>(null);
-  const [periodos, setPeriodos] = useState<PeriodoPendiente[]>([]);
-  const [periodo, setPeriodo] = useState<PeriodoPendiente | null>(null);
+  const [periodosDisponibles, setPeriodosDisponibles] = useState<PeriodoPendiente[]>([]);
+  // Períodos elegidos por el usuario, con su importe editable individualmente
+  // (por defecto, el valor de la cuota de ese período).
+  const [seleccion, setSeleccion] = useState<Record<string, number>>({});
+  const [pasoDatos, setPasoDatos] = useState(false);
 
   const [state, formAction] = useFormState(registrarPago, initialState);
 
-  // useFormState no se "resetea" solo: su estado vive fuera de este componente
-  // y sigue en {ok: true} hasta que el formulario se vuelva a enviar. Por eso
-  // usamos un estado local propio para decidir si mostrar la confirmación,
-  // y lo sincronizamos acá. Se usa `state` completo (no `state.ok`) como
-  // dependencia porque cada envío exitoso genera un objeto nuevo, incluso si
-  // el valor de `ok` sigue siendo `true` que sino el efecto no se dispararía
-  // en pagos sucesivos.
+  // useFormState no se "resetea" solo: su estado vive fuera de este
+  // componente. Usamos un estado local propio para la confirmación.
   const [mostrarConfirmacion, setMostrarConfirmacion] = useState(false);
   useEffect(() => {
     if (state.ok) setMostrarConfirmacion(true);
@@ -79,19 +81,51 @@ export function RegistrarPagoWizard({ mediosPago }: { mediosPago: MedioPago[] })
     setSocio(s);
     setResultados([]);
     setTexto(`${s.apellido}, ${s.nombre} (N° ${s.numero_socio})`);
-    setPeriodo(null);
+    setSeleccion({});
+    setPasoDatos(false);
     const data = await obtenerPeriodosPendientes(s.id);
-    setPeriodos(data as PeriodoPendiente[]);
+    setPeriodosDisponibles(data as PeriodoPendiente[]);
+  }
+
+  function alternarPeriodo(p: PeriodoPendiente) {
+    setSeleccion((actual) => {
+      const copia = { ...actual };
+      if (p.periodo_id in copia) {
+        delete copia[p.periodo_id];
+      } else {
+        copia[p.periodo_id] = p.valor_cuota;
+      }
+      return copia;
+    });
+  }
+
+  function actualizarImporte(periodoId: string, valor: number) {
+    setSeleccion((actual) => ({ ...actual, [periodoId]: valor }));
   }
 
   function reiniciar() {
     setSocio(null);
     setTexto("");
     setResultados([]);
-    setPeriodos([]);
-    setPeriodo(null);
+    setPeriodosDisponibles([]);
+    setSeleccion({});
+    setPasoDatos(false);
     setMostrarConfirmacion(false);
   }
+
+  const periodosSeleccionados = periodosDisponibles.filter((p) => p.periodo_id in seleccion);
+  const totalAPagar = periodosSeleccionados.reduce((acc, p) => acc + (seleccion[p.periodo_id] ?? 0), 0);
+
+  const periodosJSON = useMemo(
+    () =>
+      JSON.stringify(
+        periodosSeleccionados.map((p) => ({
+          cuota_periodo_id: p.periodo_id,
+          importe: seleccion[p.periodo_id] ?? p.valor_cuota,
+        }))
+      ),
+    [periodosSeleccionados, seleccion]
+  );
 
   if (mostrarConfirmacion) {
     return (
@@ -100,9 +134,13 @@ export function RegistrarPagoWizard({ mediosPago }: { mediosPago: MedioPago[] })
           ✓
         </div>
         <div>
-          <h2 className="text-lg font-semibold text-ink-900">Pago registrado correctamente</h2>
+          <h2 className="text-lg font-semibold text-ink-900">
+            {state.pendienteAprobacion ? "Pago enviado para aprobación" : "Pago registrado correctamente"}
+          </h2>
           <p className="text-sm text-ink-600">
-            El pago de {socio?.apellido}, {socio?.nombre} quedó registrado.
+            {state.pendienteAprobacion
+              ? `El pago de ${socio?.apellido}, ${socio?.nombre} quedó pendiente de aprobación por un administrador.`
+              : `El pago de ${socio?.apellido}, ${socio?.nombre} quedó registrado y aprobado.`}
           </p>
         </div>
         <button className="btn-primary" onClick={reiniciar}>
@@ -154,49 +192,97 @@ export function RegistrarPagoWizard({ mediosPago }: { mediosPago: MedioPago[] })
         )}
       </div>
 
-      {/* Paso 2: elegir período */}
-      {socio && (
+      {/* Paso 2: elegir uno o varios períodos */}
+      {socio && !pasoDatos && (
         <div className="card p-6">
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-ink-600">
-            2. Elegir trimestre a pagar
+          <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-ink-600">
+            2. Elegir períodos a pagar
           </h2>
-          {periodos.length === 0 ? (
+          <p className="mb-3 text-xs text-ink-400">
+            Podés elegir más de uno si el socio va a pagar varios trimestres juntos.
+          </p>
+          {periodosDisponibles.length === 0 ? (
             <p className="text-sm text-ink-600">
               Este socio no tiene trimestres pendientes de pago.
             </p>
           ) : (
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-              {periodos.map((p) => (
-                <button
-                  key={p.periodo_id}
-                  onClick={() => setPeriodo(p)}
-                  className={`flex flex-col items-start rounded-md border p-3 text-left transition-colors ${
-                    periodo?.periodo_id === p.periodo_id
-                      ? "border-brand bg-brand-light"
-                      : "border-border hover:bg-bg"
-                  }`}
-                >
-                  <span className="text-sm font-semibold text-ink-900">
-                    {p.anio} — {trimestreLabel(p.trimestre)}
-                  </span>
-                  <span className="text-xs text-ink-600">{formatearImporte(p.valor_cuota)}</span>
-                  <div className="mt-1"><EstadoBadge estado={p.estado_cuota} /></div>
-                </button>
-              ))}
-            </div>
+            <>
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                {periodosDisponibles.map((p) => {
+                  const elegido = p.periodo_id in seleccion;
+                  return (
+                    <button
+                      key={p.periodo_id}
+                      type="button"
+                      onClick={() => alternarPeriodo(p)}
+                      className={`flex flex-col items-start rounded-md border p-3 text-left transition-colors ${
+                        elegido ? "border-brand bg-brand-light" : "border-border hover:bg-bg"
+                      }`}
+                    >
+                      <span className="text-sm font-semibold text-ink-900">
+                        {p.anio} — {trimestreLabel(p.trimestre)}
+                      </span>
+                      <span className="text-xs text-ink-600">{formatearImporte(p.valor_cuota)}</span>
+                      <div className="mt-1"><EstadoBadge estado={p.estado_cuota} /></div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {periodosSeleccionados.length > 0 && (
+                <div className="mt-4 flex items-center justify-between border-t border-border pt-4">
+                  <p className="text-sm text-ink-600">
+                    {periodosSeleccionados.length} período{periodosSeleccionados.length > 1 ? "s" : ""}{" "}
+                    seleccionado{periodosSeleccionados.length > 1 ? "s" : ""} — total{" "}
+                    <span className="font-semibold text-ink-900">{formatearImporte(totalAPagar)}</span>
+                  </p>
+                  <button className="btn-primary" onClick={() => setPasoDatos(true)}>
+                    Continuar →
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
 
       {/* Paso 3: datos del pago */}
-      {socio && periodo && (
+      {socio && pasoDatos && (
         <form action={formAction} className="card flex flex-col gap-4 p-6">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-600">
-            3. Datos del pago — {periodo.anio} {trimestreLabel(periodo.trimestre)}
+            3. Datos del pago
           </h2>
 
           <input type="hidden" name="socio_id" value={socio.id} />
-          <input type="hidden" name="cuota_periodo_id" value={periodo.periodo_id} />
+          <input type="hidden" name="periodos" value={periodosJSON} />
+
+          {/* Períodos seleccionados, con importe editable por si el socio
+              abona un monto distinto al esperado en alguno de ellos. */}
+          <div className="flex flex-col gap-2 rounded-md border border-border p-3">
+            {periodosSeleccionados.map((p) => (
+              <div key={p.periodo_id} className="flex items-center justify-between gap-3 text-sm">
+                <span className="text-ink-900">{p.anio} {trimestreLabel(p.trimestre)}</span>
+                <div className="flex items-center gap-2">
+                  {seleccion[p.periodo_id] !== p.valor_cuota && (
+                    <span className="text-xs text-estado-pendiente" title={`Valor esperado: ${formatearImporte(p.valor_cuota)}`}>
+                      ⚠
+                    </span>
+                  )}
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="input w-28 py-1 text-right"
+                    value={seleccion[p.periodo_id] ?? p.valor_cuota}
+                    onChange={(e) => actualizarImporte(p.periodo_id, Number(e.target.value))}
+                  />
+                </div>
+              </div>
+            ))}
+            <div className="flex items-center justify-between border-t border-border pt-2 text-sm font-semibold text-ink-900">
+              <span>Total</span>
+              <span>{formatearImporte(totalAPagar)}</span>
+            </div>
+          </div>
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="field">
@@ -210,7 +296,6 @@ export function RegistrarPagoWizard({ mediosPago }: { mediosPago: MedioPago[] })
                 defaultValue={new Date().toISOString().slice(0, 10)}
               />
             </div>
-            <ImporteConAdvertencia valorEsperado={periodo.valor_cuota} />
             <div className="field">
               <label className="label" htmlFor="medio_pago_id">Medio de pago</label>
               <select id="medio_pago_id" name="medio_pago_id" required className="input" defaultValue="">
@@ -233,38 +318,12 @@ export function RegistrarPagoWizard({ mediosPago }: { mediosPago: MedioPago[] })
           {state.error && <p className="text-sm text-estado-atrasado">{state.error}</p>}
 
           <div className="flex justify-end gap-3">
-            <button type="button" className="btn-secondary" onClick={() => setPeriodo(null)}>
+            <button type="button" className="btn-secondary" onClick={() => setPasoDatos(false)}>
               Volver
             </button>
-            <BotonConfirmar />
+            <BotonConfirmar cantidad={periodosSeleccionados.length} />
           </div>
         </form>
-      )}
-    </div>
-  );
-}
-
-function ImporteConAdvertencia({ valorEsperado }: { valorEsperado: number }) {
-  const [importe, setImporte] = useState(String(valorEsperado));
-  const difiere = Number(importe) !== valorEsperado;
-
-  return (
-    <div className="field">
-      <label className="label" htmlFor="importe">Importe abonado</label>
-      <input
-        id="importe"
-        name="importe"
-        type="number"
-        step="0.01"
-        required
-        className="input"
-        value={importe}
-        onChange={(e) => setImporte(e.target.value)}
-      />
-      {difiere && (
-        <p className="text-xs text-estado-pendiente">
-          ⚠ Difiere del valor esperado ({formatearImporte(valorEsperado)}).
-        </p>
       )}
     </div>
   );

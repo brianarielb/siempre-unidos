@@ -4,27 +4,32 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { LogoutButton } from "./logout-button";
+import type { RolUsuario } from "@/lib/types";
+import { ETIQUETAS_ROL } from "@/lib/permisos";
 
-const ITEMS = [
-  { href: "/dashboard", label: "Dashboard" },
-  { href: "/socios", label: "Socios" },
-  { href: "/pagos/registrar", label: "Registrar pago" },
-  { href: "/pagos", label: "Pagos" },
-  { href: "/cuotas", label: "Cuotas / Períodos" },
-  { href: "/reportes", label: "Reportes" },
-  { href: "/configuracion", label: "Configuración" },
+const ITEMS: { href: string; label: string; roles: RolUsuario[] }[] = [
+  { href: "/dashboard", label: "Dashboard", roles: ["ADMIN", "OPERADOR", "LECTURA"] },
+  { href: "/socios", label: "Socios", roles: ["ADMIN", "OPERADOR", "LECTURA"] },
+  { href: "/pagos/registrar", label: "Registrar pago", roles: ["ADMIN", "OPERADOR"] },
+  { href: "/pagos", label: "Pagos", roles: ["ADMIN", "OPERADOR", "LECTURA"] },
+  { href: "/cuotas", label: "Cuotas / Períodos", roles: ["ADMIN", "OPERADOR", "LECTURA"] },
+  { href: "/reportes", label: "Reportes", roles: ["ADMIN", "OPERADOR", "LECTURA"] },
+  { href: "/configuracion", label: "Configuración", roles: ["ADMIN", "OPERADOR", "LECTURA"] },
 ];
 
 export function Sidebar({
   nombreUsuario,
+  rol,
   abierto,
   onNavegar,
 }: {
   nombreUsuario: string;
+  rol: RolUsuario;
   abierto: boolean;
   onNavegar: () => void;
 }) {
   const pathname = usePathname();
+  const items = ITEMS.filter((item) => item.roles.includes(rol));
 
   return (
     <aside
@@ -44,7 +49,7 @@ export function Sidebar({
       </div>
 
       <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-        {ITEMS.map((item) => {
+        {items.map((item) => {
           const activo = pathname === item.href || pathname.startsWith(item.href + "/");
           return (
             <Link
@@ -65,7 +70,8 @@ export function Sidebar({
       </nav>
 
       <div className="border-t border-border p-3">
-        <p className="truncate px-3 pb-1 text-xs text-ink-400">{nombreUsuario}</p>
+        <p className="truncate px-3 text-xs text-ink-400">{nombreUsuario}</p>
+        <p className="mb-1 px-3 text-xs text-ink-400">{ETIQUETAS_ROL[rol]}</p>
         <LogoutButton />
       </div>
     </aside>

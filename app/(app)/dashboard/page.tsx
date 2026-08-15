@@ -1,19 +1,24 @@
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { StatCard } from "@/components/stat-card";
 import { DashboardCharts } from "@/components/dashboard-charts";
 import { formatearImporte, trimestreLabel } from "@/lib/utils";
 import { trimestreActual } from "@/lib/periodo";
+import { obtenerRolActual } from "@/lib/rol-actual";
+import { puedeAprobarPagos } from "@/lib/permisos";
 
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
   const supabase = createClient();
   const { anio, trimestre } = trimestreActual();
+  const rol = await obtenerRolActual();
 
   const [
     { count: totalSocios },
     { count: sociosActivos },
     { count: sociosInactivos },
+    { count: pagosPendientesAprobacion },
     { data: estadoCuenta },
     { data: periodoActual },
     { data: pagosAnio },
@@ -21,6 +26,7 @@ export default async function DashboardPage() {
     supabase.from("socios").select("*", { count: "exact", head: true }),
     supabase.from("socios").select("*", { count: "exact", head: true }).eq("estado", "ACTIVO"),
     supabase.from("socios").select("*", { count: "exact", head: true }).eq("estado", "INACTIVO"),
+    supabase.from("pagos").select("*", { count: "exact", head: true }).eq("estado", "PENDIENTE_APROBACION"),
     supabase.from("vista_estado_cuenta").select("socio_id, estado_cuota, estado_socio"),
     supabase
       .from("cuotas_periodos")
@@ -104,7 +110,18 @@ export default async function DashboardPage() {
         <StatCard label="Pagos del período actual" value={pagosPeriodoActual} />
         <StatCard label="Recaudación del trimestre" value={formatearImporte(recaudacionTrimestreActual)} />
         <StatCard label="Recaudación anual" value={formatearImporte(recaudacionAnual)} />
+        <StatCard label="Pagos pendientes de aprobación" value={pagosPendientesAprobacion ?? 0} />
       </div>
+
+      {puedeAprobarPagos(rol) && (pagosPendientesAprobacion ?? 0) > 0 && (
+        <Link
+          href="/pagos?estado=PENDIENTE_APROBACION"
+          className="card border-estado-pendiente bg-estado-pendienteBg p-4 text-sm text-estado-pendiente hover:opacity-90"
+        >
+          Hay {pagosPendientesAprobacion} pago{pagosPendientesAprobacion === 1 ? "" : "s"} esperando tu
+          aprobación → revisarlos
+        </Link>
+      )}
 
       {!periodoActual && (
         <div className="card border-estado-pendiente bg-estado-pendienteBg p-4 text-sm text-estado-pendiente">

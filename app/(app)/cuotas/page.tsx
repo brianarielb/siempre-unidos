@@ -1,5 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { formatearFecha, trimestreLabel } from "@/lib/utils";
+import { obtenerRolActual } from "@/lib/rol-actual";
+import { puedeGestionarCuotas } from "@/lib/permisos";
 import { NuevoPeriodoForm } from "./nuevo-periodo-form";
 import { EditarValorPeriodo } from "./editar-valor-periodo";
 
@@ -7,6 +9,8 @@ export const dynamic = "force-dynamic";
 
 export default async function CuotasPage() {
   const supabase = createClient();
+  const rol = await obtenerRolActual();
+  const puedeEditar = puedeGestionarCuotas(rol);
 
   const [{ data: periodos }, { data: pagosActivos }] = await Promise.all([
     supabase
@@ -14,7 +18,7 @@ export default async function CuotasPage() {
       .select("*")
       .order("anio", { ascending: false })
       .order("trimestre", { ascending: false }),
-    supabase.from("pagos").select("cuota_periodo_id").eq("estado", "ACTIVO"),
+    supabase.from("pagos").select("cuota_periodo_id").in("estado", ["ACTIVO", "PENDIENTE_APROBACION"]),
   ]);
 
   const periodosConPagos = new Set((pagosActivos ?? []).map((p) => p.cuota_periodo_id));
@@ -25,13 +29,16 @@ export default async function CuotasPage() {
         <h1 className="text-xl font-semibold text-ink-900">Cuotas / Períodos</h1>
         <p className="text-sm text-ink-600">
           El valor de la cuota se define por trimestre. Los períodos con pagos registrados quedan bloqueados.
+          {!puedeEditar && " Solo un administrador puede crear o modificar períodos."}
         </p>
       </div>
 
-      <div className="card p-6">
-        <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-ink-600">Nuevo período</h2>
-        <NuevoPeriodoForm />
-      </div>
+      {puedeEditar && (
+        <div className="card p-6">
+          <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-ink-600">Nuevo período</h2>
+          <NuevoPeriodoForm />
+        </div>
+      )}
 
       <div className="card overflow-hidden">
         <table className="w-full text-left text-sm">
@@ -56,7 +63,7 @@ export default async function CuotasPage() {
                   <EditarValorPeriodo
                     periodoId={p.id}
                     valorActual={p.valor}
-                    bloqueado={periodosConPagos.has(p.id)}
+                    bloqueado={periodosConPagos.has(p.id) || !puedeEditar}
                   />
                 </td>
                 <td className="px-6 py-3 text-ink-600">{p.observaciones ?? "-"}</td>

@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { AppShell } from "@/components/app-shell";
+import type { RolUsuario } from "@/lib/types";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = createClient();
@@ -16,11 +17,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   const { data: perfil } = await supabase
     .from("usuarios")
-    .select("nombre, email")
+    .select("nombre, email, rol")
     .eq("id", user.id)
     .single();
 
   const nombreUsuario = perfil?.nombre || perfil?.email || user.email || "Usuario";
+  const rol = (perfil?.rol as RolUsuario) ?? "LECTURA";
 
-  return <AppShell nombreUsuario={nombreUsuario}>{children}</AppShell>;
+  return (
+    <AppShell nombreUsuario={nombreUsuario} rol={rol}>
+      {children}
+    </AppShell>
+  );
 }

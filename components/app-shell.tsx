@@ -3,12 +3,15 @@
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Sidebar } from "./sidebar";
+import type { RolUsuario } from "@/lib/types";
 
 export function AppShell({
   nombreUsuario,
+  rol,
   children,
 }: {
   nombreUsuario: string;
+  rol: RolUsuario;
   children: React.ReactNode;
 }) {
   const [abierto, setAbierto] = useState(false);
@@ -21,7 +24,7 @@ export function AppShell({
 
   return (
     <div className="flex min-h-screen bg-bg">
-      <Sidebar nombreUsuario={nombreUsuario} abierto={abierto} onNavegar={() => setAbierto(false)} />
+      <Sidebar nombreUsuario={nombreUsuario} rol={rol} abierto={abierto} onNavegar={() => setAbierto(false)} />
 
       {/* Fondo oscuro detrás del menú cuando está abierto en mobile */}
       {abierto && (

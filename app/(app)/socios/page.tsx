@@ -1,6 +1,10 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { EstadoBadge } from "@/components/estado-badge";
+import { PaginationControls } from "@/components/pagination-controls";
+import { obtenerRolActual } from "@/lib/rol-actual";
+import { puedeGestionarSocios } from "@/lib/permisos";
+import { obtenerTamanioPagina } from "@/lib/configuracion";
 import { SociosFiltros } from "./socios-filtros";
 
 export const dynamic = "force-dynamic";
@@ -8,38 +12,62 @@ export const dynamic = "force-dynamic";
 export default async function SociosPage({
   searchParams,
 }: {
-  searchParams: { q?: string; estado?: string };
+  searchParams: { q?: string; estado?: string; page?: string };
 }) {
   const supabase = createClient();
-  let query = supabase
+  const rol = await obtenerRolActual();
+  const puedeCrear = puedeGestionarSocios(rol);
+  const tamanioPagina = await obtenerTamanioPagina();
+
+  const pagina = Math.max(1, Number(searchParams.page ?? "1"));
+  const desde = (pagina - 1) * tamanioPagina;
+  const hasta = desde + tamanioPagina - 1;
+
+  // Conteo total y datos de la página se piden en consultas separadas a
+  // propósito: combinar count:"exact" con .range() en una sola consulta
+  // devolvía el total correcto pero la porción de filas vacía.
+  let countQuery = supabase.from("socios").select("id", { count: "exact", head: true });
+  let dataQuery = supabase
     .from("socios")
     .select("id, numero_socio, nombre, apellido, dni, estado, telefono")
     .order("numero_socio", { ascending: true });
 
   if (searchParams.estado) {
-    query = query.eq("estado", searchParams.estado);
+    countQuery = countQuery.eq("estado", searchParams.estado);
+    dataQuery = dataQuery.eq("estado", searchParams.estado);
   }
 
   if (searchParams.q) {
-    const q = searchParams.q.trim();
-    const esNumero = /^\d+$/.test(q);
-    query = esNumero
-      ? query.or(`numero_socio.eq.${q},dni.ilike.%${q}%`)
-      : query.or(`nombre.ilike.%${q}%,apellido.ilike.%${q}%,dni.ilike.%${q}%`);
+    const texto = searchParams.q.trim();
+    const esNumero = /^\d+$/.test(texto);
+    const filtroOr = esNumero
+      ? `numero_socio.eq.${texto},dni.ilike.%${texto}%`
+      : `nombre.ilike.%${texto}%,apellido.ilike.%${texto}%,dni.ilike.%${texto}%`;
+    countQuery = countQuery.or(filtroOr);
+    dataQuery = dataQuery.or(filtroOr);
   }
 
-  const { data: socios, error } = await query.limit(200);
+  // Conteo total y datos de la página, uno después del otro (no en paralelo):
+  // corríamos ambas consultas con Promise.all sobre el mismo cliente y una
+  // de las dos terminaba perdiendo el contexto de sesión, devolviendo 0
+  // filas mientras la otra sí contaba bien.
+  const { count } = await countQuery;
+  const { data: socios, error } = await dataQuery.range(desde, hasta);
+
+  if (error) console.error("Error consultando socios:", error.message, error.details, error.hint);
 
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold text-ink-900">Socios</h1>
-          <p className="text-sm text-ink-600">{socios?.length ?? 0} resultados</p>
+          <p className="text-sm text-ink-600">{count ?? 0} resultados</p>
         </div>
-        <Link href="/socios/nuevo" className="btn-primary">
-          + Nuevo socio
-        </Link>
+        {puedeCrear && (
+          <Link href="/socios/nuevo" className="btn-primary">
+            + Nuevo socio
+          </Link>
+        )}
       </div>
 
       <div className="card p-4">
@@ -84,6 +112,7 @@ export default async function SociosPage({
             )}
           </tbody>
         </table>
+        <PaginationControls total={count ?? 0} tamanioPagina={tamanioPagina} />
       </div>
     </div>
   );

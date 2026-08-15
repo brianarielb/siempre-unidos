@@ -4,7 +4,8 @@
 
 export type EstadoSocio = "ACTIVO" | "INACTIVO";
 export type EstadoCivil = "SOLTERO" | "CASADO" | "DIVORCIADO" | "VIUDO" | "OTRO";
-export type EstadoPago = "ACTIVO" | "ANULADO";
+export type RolUsuario = "ADMIN" | "OPERADOR" | "LECTURA";
+export type EstadoPago = "ACTIVO" | "ANULADO" | "PENDIENTE_APROBACION";
 export type EstadoCuota = "PAGADO" | "PENDIENTE" | "ATRASADO";
 
 export interface Socio {
@@ -57,6 +58,9 @@ export interface Pago {
   estado: EstadoPago;
   pago_original_id: string | null;
   motivo_anulacion: string | null;
+  aprobado_por: string | null;
+  aprobado_en: string | null;
+  grupo_pago_id: string | null;
   created_at: string;
   updated_at: string;
 }

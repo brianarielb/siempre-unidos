@@ -11,7 +11,7 @@ export function PagosFiltros({ mediosPago }: { mediosPago: MedioPago[] }) {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
     const params = new URLSearchParams();
-    for (const key of ["q", "desde", "hasta", "medio_pago_id", "incluir_anulados"]) {
+    for (const key of ["q", "desde", "hasta", "medio_pago_id", "estado"]) {
       const valor = String(formData.get(key) ?? "");
       if (valor) params.set(key, valor);
     }
@@ -41,15 +41,16 @@ export function PagosFiltros({ mediosPago }: { mediosPago: MedioPago[] }) {
           ))}
         </select>
       </div>
-      <label className="flex items-center gap-2 pb-2 text-sm text-ink-600">
-        <input
-          type="checkbox"
-          name="incluir_anulados"
-          value="1"
-          defaultChecked={searchParams.get("incluir_anulados") === "1"}
-        />
-        Incluir anulados
-      </label>
+      <div className="field w-48">
+        <label className="label" htmlFor="estado">Estado</label>
+        <select id="estado" name="estado" className="input" defaultValue={searchParams.get("estado") ?? ""}>
+          <option value="">Aprobados y pendientes</option>
+          <option value="ACTIVO">Solo aprobados</option>
+          <option value="PENDIENTE_APROBACION">Pendientes de aprobación</option>
+          <option value="ANULADO">Anulados</option>
+          <option value="TODOS">Todos (sin filtrar)</option>
+        </select>
+      </div>
       <button type="submit" className="btn-primary">Filtrar</button>
     </form>
   );

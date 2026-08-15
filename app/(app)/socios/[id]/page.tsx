@@ -5,12 +5,16 @@ import { SocioForm } from "@/components/socio-form";
 import { EstadoBadge } from "@/components/estado-badge";
 import { SocioAcciones } from "@/components/socio-acciones";
 import { formatearImporte, formatearFecha, trimestreLabel } from "@/lib/utils";
+import { obtenerRolActual } from "@/lib/rol-actual";
+import { puedeGestionarSocios } from "@/lib/permisos";
 import { actualizarSocio } from "../actions";
 
 export const dynamic = "force-dynamic";
 
 export default async function FichaSocioPage({ params }: { params: { id: string } }) {
   const supabase = createClient();
+  const rol = await obtenerRolActual();
+  const puedeEditar = puedeGestionarSocios(rol);
 
   const { data: socio } = await supabase.from("socios").select("*").eq("id", params.id).single();
   if (!socio) notFound();
@@ -36,12 +40,17 @@ export default async function FichaSocioPage({ params }: { params: { id: string 
           </h1>
           <div className="mt-1"><EstadoBadge estado={socio.estado} /></div>
         </div>
-        <SocioAcciones socioId={socio.id} estado={socio.estado} />
+        {puedeEditar && <SocioAcciones socioId={socio.id} estado={socio.estado} />}
       </div>
 
       <section className="card p-6">
         <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-ink-600">Datos del socio</h2>
-        <SocioForm socio={socio} action={actualizarSocioConId} labelBoton="Guardar cambios" />
+        <SocioForm
+          socio={socio}
+          action={actualizarSocioConId}
+          labelBoton="Guardar cambios"
+          soloLectura={!puedeEditar}
+        />
       </section>
 
       <section className="card overflow-hidden">

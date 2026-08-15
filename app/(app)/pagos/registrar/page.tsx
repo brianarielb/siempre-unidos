@@ -1,9 +1,15 @@
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { obtenerRolActual } from "@/lib/rol-actual";
+import { puedeRegistrarPagos } from "@/lib/permisos";
 import { RegistrarPagoWizard } from "./registrar-pago-wizard";
 
 export const dynamic = "force-dynamic";
 
 export default async function RegistrarPagoPage() {
+  const rol = await obtenerRolActual();
+  if (!puedeRegistrarPagos(rol)) redirect("/pagos");
+
   const supabase = createClient();
   const { data: mediosPago } = await supabase
     .from("medios_pago")

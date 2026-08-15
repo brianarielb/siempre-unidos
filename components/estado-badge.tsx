@@ -4,9 +4,14 @@ const ESTILOS: Record<string, string> = {
   PAGADO: "text-estado-pagado bg-estado-pagadoBg",
   ACTIVO: "text-estado-pagado bg-estado-pagadoBg",
   PENDIENTE: "text-estado-pendiente bg-estado-pendienteBg",
+  PENDIENTE_APROBACION: "text-estado-pendiente bg-estado-pendienteBg",
   ATRASADO: "text-estado-atrasado bg-estado-atrasadoBg",
   ANULADO: "text-estado-anulado bg-estado-anuladoBg",
   INACTIVO: "text-estado-anulado bg-estado-anuladoBg",
+};
+
+const ETIQUETAS: Record<string, string> = {
+  PENDIENTE_APROBACION: "PENDIENTE DE APROBACIÓN",
 };
 
 export function EstadoBadge({ estado }: { estado: string }) {
@@ -17,7 +22,7 @@ export function EstadoBadge({ estado }: { estado: string }) {
         ESTILOS[estado] ?? "text-ink-600 bg-bg"
       )}
     >
-      {estado}
+      {ETIQUETAS[estado] ?? estado}
     </span>
   );
 }
